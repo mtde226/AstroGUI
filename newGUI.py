@@ -9,211 +9,288 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from astropy.timeseries import LombScargle
 
-## Lomb-Scargle analysis
-def doLombScargle(time,value,error=0):
-    if(hasattr(error,"__len__")):
-        ls = LombScargle(time,value,error)
-    else:
-        ls = LombScargle(time,value)
-    freq, power = ls.autopower(minimum_frequency=0.01,maximum_frequency=12.)
-    return freq, power, ls
+class newGUI:
+    def __init__(self, master):
+        self.RA = []
+        self.DE = []
+        self.PSFFLUX = []
+        self.PCAFLUX = []
+        self.RAWFLUX = []
+        self.TIME = []
+        self.FTYPE = "PSF"
 
-## Pre-whiten data by subtracting the
-## primary frequency and next 3 harmonics
-def doPreWhiten(mtime,mflux,fPrimary,ls):
-    diff = mflux
-    for i in range(1,5):
-        fit = ls.model(mtime,i*fPrimary)
-        diff -= fit
-    freq, power, pwLS = doLombScargle(mtime,diff)
-    return freq, power, pwLS
+        self.master = master
+        master.title("RRL Analysis GUI")
+        self.fNameButton = tkinter.Button(master, text="Open File", fg="blue", command=self.retrieveInput)
+        self.fNameButton.grid(row = 0, column = 0)
+        self.fNameLabel = tkinter.Label(master, text="Input File Name: ")
+        self.fNameLabel.grid(row = 0, column = 1)
+        self.fNumberLabel = tkinter.Label(master, text="N Stars = 0")
+        self.fNumberLabel.grid(row=0,column=2)
+        self.saveButton = tkinter.Button(master, text="Save This Star", fg="green", command=self.saveStar)
+        self.saveButton.grid(row=0,column=3)
+        self.fluxChoice1 = tkinter.Radiobutton(master, text="PSF", variable=self.FTYPE, value="PSF", indicator=0, command=lambda : self.updatePlots("PSF"))
+        self.fluxChoice2 = tkinter.Radiobutton(master, text="PCA", variable=self.FTYPE, value="PCA", indicator=0, command=lambda : self.updatePlots("PCA"))
+        self.fluxChoice3 = tkinter.Radiobutton(master, text="RAW", variable=self.FTYPE, value="RAW", indicator=0, command=lambda : self.updatePlots("RAW"))
+        self.fluxChoice1.grid(row = 1, column = 2)
+        self.fluxChoice2.grid(row = 1, column = 3)
+        self.fluxChoice3.grid(row = 1, column = 4)
 
-## Update number of stars left
-def changeCounter(N):
-    fNumberLabel['text'] = "N Stars = %d"%(N)
+        self.figContour, self.figAx = plt.subplots(figsize=(2,2))
+        self.tpfPlot = FigureCanvasTkAgg(self.figContour, master)
+        self.tpfPlot.get_tk_widget().grid(row = 2, column = 0)
 
-## Save options for star
-def storeValues():
-    # this will be for storing information about the star
-    return
+        self.figLC, self.axLC = plt.subplots(figsize=(7,2))
+        self.lcPlot = FigureCanvasTkAgg(self.figLC, master)
+        self.lcPlot.get_tk_widget().grid(row = 2, column = 1, columnspan = 3)
 
-## Reset all options for star
-def clearValues():
-    # reset information about the star
-    return
+        self.figZoom, self.axZoom = plt.subplots(figsize=(3,2))
+        self.zoomPlot = FigureCanvasTkAgg(self.figZoom, master)
+        self.zoomPlot.get_tk_widget().grid(row = 2, column = 4)
 
-## Popup what is wrong
-def errorWindow(errtext):
-    errwin = tkinter.Tk()
-    errLabel = tkinter.Label(errwin, text=errtext)
-    errLabel.grid(row=0,sticky=tkinter.E)
-    errButton = tkinter.Button(errwin, text="OK", fg="red", command=lambda : errwin.destroy())
-    errButton.grid(row=1,column=0)
+        self.figPhased, self.axPhased = plt.subplots(figsize=(3,2))
+        self.phasedPlot = FigureCanvasTkAgg(self.figPhased, master)
+        self.phasedPlot.get_tk_widget().grid(row = 3, column = 4)
 
-## Open an input file with target stars
-## Format: ra(decimal degrees) \t dec(decimal degrees)
-def retrieveInput():
-    fname = tkinter.filedialog.askopenfilename()
-    endParse = fname.split("/")
-    fNameLabel['text'] = "Input File Name: " + endParse[len(endParse)-1]
-    temp = [0,1]
-    RA.clear()
-    DE.clear()
-    try:
-        for line in open(fname):#fNameEntry.get()):
-            parse = line.split("\t")
-            temp[0] = float(parse[0])
-            temp[1] = float(parse[1])
-            RA.append(temp[0])
-            DE.append(temp[1])
-        # Show number of stars in file
-        changeCounter(len(RA))
-        # We go backwards through the list
-        RA.reverse()
-        DE.reverse()
-        showStar()
-    except:
-        changeCounter(0)
-        errorWindow("BAD INPUT FILE!!")
+        self.figPower, self.axPower = plt.subplots(figsize=(3,2))
+        self.powerPlot = FigureCanvasTkAgg(self.figPower, master)
+        self.powerPlot.get_tk_widget().grid(row = 3, column = 0)
 
-## Save options and move on
-def saveStar():
-    storeValues()
-    if(len(RA)>0):
-        RA.pop()
-        DE.pop()
-    changeCounter(len(RA))
-    showStar()
+        self.figPreWhiten, self.axPreWhiten = plt.subplots(figsize=(3,2))
+        self.prewhitenPlot = FigureCanvasTkAgg(self.figPreWhiten, master)
+        self.prewhitenPlot.get_tk_widget().grid(row = 3, column = 1)
 
-## Plot the TPF image and aperture
-def addTPF(data):
-    figContour, figAx = plt.subplots(figsize=(2,2))
-    figAx.imshow(data.tpf[0])
-    figAx.imshow(data.aperture,cmap='Greys',alpha=0.5)
-    tpfPlot = FigureCanvasTkAgg(figContour, root)
-    tpfPlot.get_tk_widget().grid(row = 1, column = 0)
+        self.figPWZoom, self.axPWZoom = plt.subplots(figsize=(3,2))
+        self.pwzoomPlot = FigureCanvasTkAgg(self.figPWZoom, master)
+        self.pwzoomPlot.get_tk_widget().grid(row = 3, column = 2)
 
-## Plot the full light curve and
-## a zoomed in portion
-def addLC(data):
-    time = data.time
-    flux = data.psf_flux
-    qual = data.quality
-    mask = (qual == 0) & (flux>0.) ## good data only
-    mtime = time[mask]
-    mflux = flux[mask]
-    figLC, axLC = plt.subplots(figsize=(7,2))
-    axLC.plot(mtime,mflux,'o')
-    axLC.grid()
-    lcPlot = FigureCanvasTkAgg(figLC, root)
-    lcPlot.get_tk_widget().grid(row = 1, column = 1, columnspan = 3)
 
-    figZoom, axZoom = plt.subplots(figsize=(3,2))
-    axZoom.plot(mtime,mflux,'o-')
-    axZoom.grid()
-    axZoom.set_xlim(data.time[0]+4,data.time[0]+6)
-    zoomPlot = FigureCanvasTkAgg(figZoom, root)
-    zoomPlot.get_tk_widget().grid(row = 1, column = 4)
+    ## Lomb-Scargle analysis
+    def doLombScargle(self,time,value,error=0,minFreq=0.01,maxFreq=12.):
+        if(hasattr(error,"__len__")):
+            ls = LombScargle(time,value,error)
+        else:
+            ls = LombScargle(time,value)
+        freq, power = ls.autopower(minimum_frequency=minFreq,maximum_frequency=maxFreq)
+        return freq, power, ls
 
-## Plot a phased light curve
-def addPhased(data):
-    time = data.time
-    flux = data.psf_flux
-    qual = data.quality
-    mask = (qual == 0) & (flux>0.)
-    mtime = time[mask]
-    mflux = flux[mask]
-    freq, power, ls = doLombScargle(mtime,mflux)
-    maxT = mtime[np.argmax(mflux)]
-    maxF = freq[np.argmax(power)]
-    figPhased, axPhased = plt.subplots(figsize=(3,2))
-    axPhased.plot( ((mtime-maxT)*maxF)%1, mflux, 'o' )
-    yval = mflux[np.argmin(mflux)] + 0.8*(mflux[np.argmax(mflux)]-mflux[np.argmin(mflux)])
-    axPhased.text(0.33,yval,"P = %.5f"%(1.0/maxF))
-    axPhased.grid()
-    phasedPlot = FigureCanvasTkAgg(figPhased, root)
-    phasedPlot.get_tk_widget().grid(row = 2, column = 4)
+    ## Pre-whiten data by subtracting the
+    ## primary frequency and next 3 harmonics
+    def doPreWhiten(self,mtime,mflux,fPrimary,ls):
+        diff = mflux
+        for i in range(1,5):
+            fit = ls.model(mtime,i*fPrimary)
+            diff -= fit
+        freq, power, pwLS = self.doLombScargle(mtime,diff)
+        return freq, power, pwLS
 
-## Plot analysis for an RRc type
-def addAnalysis_c(data):
-    time = data.time
-    flux = data.psf_flux
-    qual = data.quality
-    mask = (qual == 0) & (flux>0.)
-    mtime = time[mask]
-    mflux = flux[mask]
-    freq, power, ls = doLombScargle(mtime,mflux)
-    fPrimary = freq[np.argmax(power)]
+    ## Update number of stars left
+    def changeCounter(self,N):
+        self.fNumberLabel['text'] = "N Stars = %d"%(N)
 
-    figPower, axPower = plt.subplots(figsize=(3,2))
-    axPower.plot(freq,power)
-    axPower.text(1.1*fPrimary,0.8*power[np.argmax(power)],"F = %.5f"%(fPrimary))
-    axPower.grid()
-    powerPlot = FigureCanvasTkAgg(figPower, root)
-    powerPlot.get_tk_widget().grid(row = 2, column = 0)
+    ## Save options for star
+    def storeValues(self):
+        # this will be for storing information about the star
+        return
 
-    pwFreq, pwPower, pwLS = doPreWhiten(mtime,mflux,fPrimary,ls)
+    ## Reset all options for star
+    def clearValues(self):
+        # reset information about the star
+        return
 
-    figPreWhiten, axPreWhiten = plt.subplots(figsize=(3,2))
-    axPreWhiten.plot(pwFreq,pwPower)
-    axPreWhiten.grid()
-    prewhitenPlot = FigureCanvasTkAgg(figPreWhiten, root)
-    prewhitenPlot.get_tk_widget().grid(row = 2, column = 1)
-    figPWZoom, axPWZoom = plt.subplots(figsize=(3,2))
-    pmask = (pwFreq>1.1) & (pwFreq<12.0)
-    mpwFreq = pwFreq[pmask]
-    mpwPower = pwPower[pmask]
-    fPeak = mpwFreq[np.argmax(mpwPower)]
-    axPWZoom.plot(mpwFreq,mpwPower)
-    axPWZoom.text(1.1*fPeak,0.8*mpwPower[np.argmax(mpwPower)],"F = %.5f"%(fPeak))
-    axPWZoom.grid()
-    pwzoomPlot = FigureCanvasTkAgg(figPWZoom, root)
-    pwzoomPlot.get_tk_widget().grid(row = 2, column = 2)
+    ## Popup what is wrong
+    def errorWindow(self,errtext):
+        errwin = tkinter.Tk()
+        errLabel = tkinter.Label(errwin, text=errtext)
+        errLabel.grid(row=0,sticky=tkinter.E)
+        errButton = tkinter.Button(errwin, text="OK", fg="red", command=lambda : errwin.destroy())
+        errButton.grid(row=1,column=0)
 
-## Get data and display
-def showStar():
-    plt.close('all')
-    if(len(RA)==0):
-        changeCounter(0)
-        errorWindow("ALL DONE.")
-    else:
-        clearValues()
-        coord = SkyCoord(RA[len(RA)-1],DE[len(DE)-1], unit="deg")
+    ## Open an input file with target stars
+    ## Format: ra(decimal degrees) \t dec(decimal degrees)
+    def retrieveInput(self):
+        fname = tkinter.filedialog.askopenfilename()
+        endParse = fname.split("/")
+        self.fNameLabel['text'] = "Input File Name: " + endParse[len(endParse)-1]
+        temp = [0,1]
+        self.RA.clear()
+        self.DE.clear()
+        self.PSFFLUX.clear()
+        self.PCAFLUX.clear()
+        self.RAWFLUX.clear()
+        self.TIME.clear()
+        try:
+            for line in open(fname):
+                parse = line.split("\t")
+                temp[0] = float(parse[0])
+                temp[1] = float(parse[1])
+                self.RA.append(temp[0])
+                self.DE.append(temp[1])
+            # Show number of stars in file
+            self.changeCounter(len(self.RA))
+            # We go backwards through the list
+            self.RA.reverse()
+            self.DE.reverse()
+            self.showStar()
+        except:
+            self.changeCounter(0)
+            self.errorWindow("BAD INPUT FILE!!")
+
+    ## Save options and move on
+    def saveStar(self):
+        self.storeValues()
+        if(len(self.RA)>0):
+            self.RA.pop()
+            self.DE.pop()
+        self.changeCounter(len(self.RA))
+        self.showStar()
+
+    ## Plot the TPF image and aperture
+    def addTPF(self,data):
+        self.tpfPlot.get_tk_widget().grid_forget()
+        self.figContour.clear()
+        self.figContour, self.figAx = plt.subplots(figsize=(2,2))
+        self.figAx.imshow(data.tpf[0])
+        self.figAx.imshow(data.aperture,cmap='Greys',alpha=0.42)
+        self.tpfPlot = FigureCanvasTkAgg(self.figContour, self.master)
+        self.tpfPlot.get_tk_widget().grid(row = 2, column = 0)
+
+    ## Plot the full light curve and
+    ## a zoomed in portion
+    def addLC(self,mtime,mflux):
+        self.lcPlot.get_tk_widget().grid_forget()
+        self.figLC.clear()
+        self.figLC, self.axLC = plt.subplots(figsize=(7,2))
+        self.axLC.plot(mtime,mflux,'o')
+        self.axLC.grid()
+        self.lcPlot = FigureCanvasTkAgg(self.figLC, self.master)
+        self.lcPlot.get_tk_widget().grid(row = 2, column = 1, columnspan = 3)
+
+        self.zoomPlot.get_tk_widget().grid_forget()
+        self.figZoom.clear()
+        self.figZoom, self.axZoom = plt.subplots(figsize=(3,2))
+        self.axZoom.plot(mtime,mflux,'o-')
+        self.axZoom.grid()
+        self.axZoom.set_xlim(mtime[0]+4,mtime[0]+6)
+        self.zoomPlot = FigureCanvasTkAgg(self.figZoom, self.master)
+        self.zoomPlot.get_tk_widget().grid(row = 2, column = 4)
+
+    ## Plot a phased light curve
+    def addPhased(self,mtime,mflux):
+        freq, power, ls = self.doLombScargle(mtime,mflux)
+        maxT = mtime[np.argmax(mflux)]
+        maxF = freq[np.argmax(power)]
+        self.phasedPlot.get_tk_widget().grid_forget()
+        self.figPhased.clear()
+        self.figPhased, self.axPhased = plt.subplots(figsize=(3,2))
+        self.axPhased.plot( ((mtime-maxT)*maxF)%1, mflux, 'o' )
+        yval = mflux[np.argmin(mflux)] + 0.8*(mflux[np.argmax(mflux)]-mflux[np.argmin(mflux)])
+        self.axPhased.text(0.33,yval,"P = %.5f"%(1.0/maxF))
+        self.axPhased.grid()
+        self.phasedPlot = FigureCanvasTkAgg(self.figPhased, self.master)
+        self.phasedPlot.get_tk_widget().grid(row = 3, column = 4)
+
+    ## Plot analysis for an RRc type
+    def addAnalysis_c(self,mtime,mflux):
+        freq, power, ls = self.doLombScargle(mtime,mflux)
+        fPrimary = freq[np.argmax(power)]
+
+        self.powerPlot.get_tk_widget().grid_forget()
+        self.figPower.clear()
+        self.figPower, self.axPower = plt.subplots(figsize=(3,2))
+        self.axPower.plot(freq,power)
+        self.axPower.text(1.1*fPrimary,0.8*power[np.argmax(power)],"F = %.5f"%(fPrimary))
+        self.axPower.grid()
+        self.powerPlot = FigureCanvasTkAgg(self.figPower, self.master)
+        self.powerPlot.get_tk_widget().grid(row = 3, column = 0)
+
+        pwFreq, pwPower, pwLS = self.doPreWhiten(mtime,mflux,fPrimary,ls)
+
+        self.prewhitenPlot.get_tk_widget().grid_forget()
+        self.figPreWhiten.clear()
+        self.figPreWhiten, self.axPreWhiten = plt.subplots(figsize=(3,2))
+        self.axPreWhiten.plot(pwFreq,pwPower)
+        self.axPreWhiten.grid()
+        self.prewhitenPlot = FigureCanvasTkAgg(self.figPreWhiten, self.master)
+        self.prewhitenPlot.get_tk_widget().grid(row = 3, column = 1)
+
+        self.pwzoomPlot.get_tk_widget().grid_forget()
+        self.figPWZoom.clear()
+        self.figPWZoom, self.axPWZoom = plt.subplots(figsize=(3,2))
+        pmask = (pwFreq>1.1) & (pwFreq<12.0)
+        mpwFreq = pwFreq[pmask]
+        mpwPower = pwPower[pmask]
+        #mpwFreq, mpwPower, mls = doLombScargle(pwFreq,pwPower,0,fPrimary/0.75,fPrimary/0.5)
+        fPeak = mpwFreq[np.argmax(mpwPower)]
+        self.axPWZoom.plot(mpwFreq,mpwPower)
+        self.axPWZoom.text(1.1*fPeak,0.8*mpwPower[np.argmax(mpwPower)],"F = %.5f"%(fPeak))
+        self.axPWZoom.grid()
+        self.pwzoomPlot = FigureCanvasTkAgg(self.figPWZoom, self.master)
+        self.pwzoomPlot.get_tk_widget().grid(row = 3, column = 2)
+
+    def updatePlots(self,whichtype):
+        self.FTYPE = whichtype
+        if(self.FTYPE == "RAW"):
+            self.addLC(self.TIME,self.RAWFLUX)
+            self.addPhased(self.TIME,self.RAWFLUX)
+            self.addAnalysis_c(self.TIME,self.RAWFLUX)
+        elif(self.FTYPE == "PCA"):
+            self.addLC(self.TIME,self.PCAFLUX)
+            self.addPhased(self.TIME,self.PCAFLUX)
+            self.addAnalysis_c(self.TIME,self.PCAFLUX)
+        else:
+            self.addLC(self.TIME,self.PSFFLUX)
+            self.addPhased(self.TIME,self.PSFFLUX)
+            self.addAnalysis_c(self.TIME,self.PSFFLUX)
+
+    ## Get data and display
+    def showStar(self):
+        plt.close('all')
+        self.PSFFLUX.clear()
+        self.PCAFLUX.clear()
+        self.RAWFLUX.clear()
+        self.TIME.clear()
+        if(len(self.RA)==0):
+            self.changeCounter(0)
+            self.errorWindow("ALL DONE.")
+
+        self.clearValues()
+        coord = SkyCoord(self.RA[len(self.RA)-1],self.DE[len(self.DE)-1], unit="deg")
         sector_table = Tesscut.get_sectors(coordinates=coord)
         if(len(sector_table)==0): # not in sector (yet?)
-            saveStar()
-            errorWindow("NOT IN SECTOR")
+            self.saveStar()
+            self.errorWindow("NOT IN SECTOR")
             return
         else:
-            for i in range(len(sector_table)):
-                sec = int(sector_table['sector'][i])
-                try:
-                    star = eleanor.Source(coords=coord, sector=sec, tc=True)
-                except:
-                    saveStar()
-                    errorWindow("NOT AN ELEANOR SOURCE")
-                    return
-                try:
-                    data = eleanor.TargetData(star, try_load=True, do_psf=True, do_pca=True)
-                except:
-                    saveStar()
-                    errorWindow("NO TARGET DATA")
-                    return
-                addTPF(data)
-                addLC(data)
-                addPhased(data)
-                addAnalysis_c(data)
+            #for i in range(len(sector_table)):
+            #    sec = int(sector_table['sector'][i])
+            sec = int(sector_table['sector'][0])
+            try:
+                star = eleanor.Source(coords=coord, sector=sec, tc=True)
+            except:
+                self.saveStar()
+                self.errorWindow("NOT AN ELEANOR SOURCE")
+                return
+            try:
+                data = eleanor.TargetData(star, try_load=True, do_psf=True, do_pca=True)
+            except:
+                self.saveStar()
+                self.errorWindow("NO TARGET DATA")
+                return
+        # Put TPF in window
+        self.addTPF(data)
+        # Store data for star
+        for i in range(len(data.time)):
+            if( (data.quality[i] == 0) & (data.raw_flux[i]>0.) ):
+                self.PSFFLUX.append(data.psf_flux[i])
+                self.PCAFLUX.append(data.pca_flux[i])
+                self.RAWFLUX.append(data.raw_flux[i])
+                self.TIME.append(data.time[i])
+        # Make plots
+        self.updatePlots(self.FTYPE)
 
-RA = []
-DE = []
+
 root = tkinter.Tk()
-fNameButton = tkinter.Button(root, text="Open File", fg="blue", command=lambda : retrieveInput())
-fNameButton.grid(row = 0, column = 0)
-fNameLabel = tkinter.Label(root, text="Input File Name: ")
-fNameLabel.grid(row = 0, column = 1)
-fNumberLabel = tkinter.Label(root, text="N Stars = 0")
-fNumberLabel.grid(row=0,column=2)
-saveButton = tkinter.Button(root, text="Save This Star", fg="green", command=lambda : saveStar())
-saveButton.grid(row=0,column=3)
+theGui = newGUI(root)
 root.mainloop()
 
