@@ -1,12 +1,19 @@
 from functions import *
 import warnings
+from astropy.utils.exceptions import AstropyWarning
 import os
 import numpy as np
 from astropy.io import fits
 from astropy.modeling import models, fitting
+from specutils.analysis import centroid, equivalent_width
+from specutils.spectra import Spectrum1D, SpectralRegion
+from specutils.fitting import fit_generic_continuum
+from astropy import units as u
 import tkinter
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+warnings.simplefilter('ignore', UserWarning)
+warnings.simplefilter('ignore', category=AstropyWarning)
 
 class newGUI:
     def __init__(self, master):
@@ -21,6 +28,10 @@ class newGUI:
         self.WAVE = np.zeros((17,1198))
         self.FLUX = np.zeros((17,1198))
         self.SIGMA = np.zeros((17,1198))
+        self.NORMFLUX = np.zeros((17,1198))
+        self.NORMSIGMA = np.zeros((17,1198))
+        self.CONTFLUX = []
+        self.CONTSIGMA = []
 
         self.master = master
         master.title("Line Analysis GUI")
@@ -43,9 +54,11 @@ class newGUI:
 
         self.updateButton = tkinter.Button(master, text="Update Plot", fg="red", command=self.updatePlot)
         self.updateButton.grid(row = 1, column = 1)
+        self.updateButton['state'] = 'disabled'
 
         self.fitButton = tkinter.Button(master, text="Fit Values", fg="red", command=self.fitValues)
         self.fitButton.grid(row = 1, column = 2)
+        self.fitButton['state'] = 'disabled'
 
         self.lowRangeLabel = tkinter.Label(master, text="Low plot:")
         self.lowRangeLabel.grid(row = 2, column = 0)
@@ -85,9 +98,24 @@ class newGUI:
         self.widthErr = tkinter.Entry(master,width=10)
         self.widthErr.grid(row = 5, column = 3)
 
-        self.figLine, self.figLAx = plt.subplots(figsize=(4,4))
+        self.centroidLabel = tkinter.Label(master, text="Centroid")
+        self.centroidLabel.grid(row = 6, column = 0)
+        self.centroid = tkinter.Entry(master,width=10)
+        self.centroid.grid(row = 7, column = 0)
+
+        self.eqwLabel = tkinter.Label(master, text="Eq Width")
+        self.eqwLabel.grid(row = 6, column = 1)
+        self.eqwidth = tkinter.Entry(master,width=10)
+        self.eqwidth.grid(row = 7, column = 1)
+
+        self.calceqwLabel = tkinter.Label(master, text="Calc EQW")
+        self.calceqwLabel.grid(row = 6, column = 3)
+        self.calceqw = tkinter.Entry(master,width=10)
+        self.calceqw.grid(row = 7, column = 3)
+
+        self.figLine, self.figLAx = plt.subplots(figsize=(5,5))
         self.canLine = FigureCanvasTkAgg(self.figLine, master)
-        self.canLine.get_tk_widget().grid(row = 6, column = 0, columnspan=4)
+        self.canLine.get_tk_widget().grid(row = 8, column = 0, columnspan=4)
 
     ## Open an input file
     def retrieveInput(self):
@@ -115,10 +143,12 @@ class newGUI:
             crreject(self.FLUX[iapp],10.,2,42)
             crreject(self.FLUX[iapp],5.,2,13)
             bkgr = bkgrnd(self.FLUX[iapp],42,3,True)
-            self.FLUX[iapp] /= bkgr
-            self.SIGMA[iapp] /= bkgr
+            self.NORMFLUX[iapp] = self.FLUX[iapp]/bkgr
+            self.NORMSIGMA[iapp] = self.SIGMA[iapp]/self.FLUX[iapp]*self.NORMFLUX[iapp]
             iapp += 1
         specin.close()
+        self.updateButton['state'] = 'normal'
+        self.fitButton['state'] = 'normal'
 
     def fitValues(self):
         APER = self.apVal.get() - 1
@@ -133,7 +163,7 @@ class newGUI:
         fitter_line = fitting.LevMarLSQFitter()
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
-            bestfit_line = fitter_line(model_line,self.WAVE[APER][mask],self.FLUX[APER][mask],weights=1./self.SIGMA[APER][mask])
+            bestfit_line = fitter_line(model_line,self.WAVE[APER][mask],self.NORMFLUX[APER][mask],weights=1./self.NORMSIGMA[APER][mask])
         try:
             cov_diag = np.diag(fitter_line.fit_info['param_cov'])
         except:
@@ -154,6 +184,27 @@ class newGUI:
         self.continuum.insert(0, bestfit_line.amplitude_0.value)
         self.contErr.delete(0, tkinter.END)
         self.contErr.insert(0, np.sqrt(cov_diag[0]))
+        sumeqw = 0.0
+        conti = bestfit_line.amplitude_0.value
+        for i in range(len(self.WAVE[APER])):
+            if( (self.WAVE[APER][i] > LOW) & (self.WAVE[APER][i] < HIGH) ):
+                sumeqw += (conti-self.NORMFLUX[APER][i])/conti*(self.WAVE[APER][i]-self.WAVE[APER][i-1])
+        self.calceqw.delete(0, tkinter.END)
+        self.calceqw.insert(0, sumeqw)
+        mask = (self.WAVE[APER] > LOW-5.) & (self.WAVE[APER] < HIGH+5.)
+        spec = Spectrum1D(flux=self.FLUX[APER][mask]*u.dimensionless_unscaled, spectral_axis=self.WAVE[APER][mask]*u.AA)#, uncertainty=1.0/self.SIGMA[APER][mask])
+        bkgrfit = fit_generic_continuum(spec)
+        mask = (self.WAVE[APER] > LOW) & (self.WAVE[APER] < HIGH)
+        ycont = bkgrfit(self.WAVE[APER][mask]*u.AA)
+        self.CONTFLUX = np.zeros(len(self.WAVE[APER][mask]))
+        self.CONTSIGMA = np.zeros(len(self.WAVE[APER][mask]))
+        self.CONTFLUX = self.FLUX[APER][mask]/ycont
+        self.CONTSIGMA = self.SIGMA[APER][mask]/self.FLUX[APER][mask]*self.CONTFLUX
+        spec = Spectrum1D(flux=self.CONTFLUX*u.dimensionless_unscaled, spectral_axis=self.WAVE[APER][mask]*u.AA)#, uncertainty=1.0/self.CONTSIGMA)
+        self.centroid.delete(0, tkinter.END)
+        self.centroid.insert(0, centroid(spec, SpectralRegion(LOW*u.AA, HIGH*u.AA))/u.AA)
+        self.eqwidth.delete(0, tkinter.END)
+        self.eqwidth.insert(0, equivalent_width(spec, regions=SpectralRegion(LOW*u.AA, HIGH*u.AA))/u.AA)
         self.updatePlot()
 
     def saveLine(self):
@@ -169,22 +220,44 @@ class newGUI:
         plt.close('all')
         self.canLine.get_tk_widget().grid_forget()
         self.figLine.clear()
-        self.figLine, self.figLAx = plt.subplots(figsize=(4,4))
+        self.figLine, self.figLAx = plt.subplots(figsize=(5,5))
         APER = self.apVal.get() - 1
         LOW = float(self.lowRange.get())
         HIGH = float(self.highRange.get())
-        MEAN = float(self.fitMean.get())
-        DEPTH = float(self.fitDepth.get())
-        STDDEV = float(self.fitWidth.get())
-        CONTI = float(self.continuum.get())
+        try:
+            MEAN = float(self.fitMean.get())
+        except:
+            MEAN = (HIGH+LOW)/2.0
+        try:
+            DEPTH = float(self.fitDepth.get())
+        except:
+            DEPTH = -0.6
+        try:
+            STDDEV = float(self.fitWidth.get())
+        except:
+            STDDEV = 0.1
+        try:
+            CONTI = float(self.continuum.get())
+        except:
+            CONTI = 1.0
+        try:
+            CENT = float(self.centroid.get())
+        except:
+            CENT = 0.0
+        mask = (self.WAVE[APER] > LOW) & (self.WAVE[APER] < HIGH)
         model_line = models.Const1D(CONTI) + models.Gaussian1D(amplitude=DEPTH, mean=MEAN, stddev=STDDEV)
-        self.figLAx.plot(self.WAVE[APER],self.FLUX[APER])
-        self.figLAx.plot(self.WAVE[APER],model_line(self.WAVE[APER]))
+        self.figLAx.plot(self.WAVE[APER],self.NORMFLUX[APER])
+        self.figLAx.axvline(x=CENT,linewidth=4,color='black')
+        try:
+            self.figLAx.plot(self.WAVE[APER][mask],self.CONTFLUX)
+        except:
+            self.figLAx.plot()
+        self.figLAx.plot(self.WAVE[APER],model_line(self.WAVE[APER]),linewidth=2)
         self.figLAx.grid()
         self.figLAx.set_xlim(LOW,HIGH)
         self.figLAx.set_ylim(0.0,1.2)
         self.canLine = FigureCanvasTkAgg(self.figLine, self.master)
-        self.canLine.get_tk_widget().grid(row = 6, column = 0, columnspan=4)
+        self.canLine.get_tk_widget().grid(row = 8, column = 0, columnspan=4)
 
 
 
