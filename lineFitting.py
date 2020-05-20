@@ -208,8 +208,10 @@ class newGUI:
         self.updatePlot()
 
     def saveLine(self):
-        self.FOUT.write("%s %s %d %.4f %.6f %.6f %.6f %.6f %.6f\n"%
+        self.FOUT.write("%s %s %d %.4f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n"%
                             (self.FILENAME, self.NAME, np.int8(self.apVal.get()),
+                            np.float32(self.centroid.get()), np.float32(self.eqwidth.get()),
+                            np.float32(self.calceqw.get()),
                             np.float32(self.fitMean.get()), np.float32(self.meanErr.get()),
                             np.float32(self.fitWidth.get()), np.float32(self.widthErr.get()),
                             np.float32(self.fitDepth.get()), np.float32(self.depthErr.get())))
