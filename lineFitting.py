@@ -4,6 +4,7 @@ import os
 import numpy as np
 from astropy.io import fits
 from astropy.modeling import models, fitting
+from astropy.nddata import VarianceUncertainty
 from specutils.analysis import centroid, equivalent_width
 from specutils.spectra import Spectrum1D, SpectralRegion
 from specutils.fitting import fit_generic_continuum
@@ -174,7 +175,7 @@ class newGUI:
         HIGH = float(self.highRange.get())
         # fit continuum in window +/- 5 angstroms
         mask = (self.WAVE[APER] > LOW-5.) & (self.WAVE[APER] < HIGH+5.)
-        spec = Spectrum1D(flux=self.FLUX[APER][mask]*u.dimensionless_unscaled, spectral_axis=self.WAVE[APER][mask]*u.AA)#, uncertainty=1.0/self.SIGMA[APER][mask])
+        spec = Spectrum1D(flux=self.FLUX[APER][mask]*u.dimensionless_unscaled, spectral_axis=self.WAVE[APER][mask]*u.AA, uncertainty=VarianceUncertainty(self.SIGMA[APER][mask]*u.dimensionless_unscaled))
         bkgrfit = fit_generic_continuum(spec)
         mask = (self.WAVE[APER] > LOW) & (self.WAVE[APER] < HIGH)
         self.CONTWAVE = self.WAVE[APER][mask]
@@ -205,7 +206,7 @@ class newGUI:
             HWIN = float(self.highRange.get())
         self.contiFit()
         # find centroid and equivalent width in window
-        spec = Spectrum1D(flux=self.CONTFLUX*u.dimensionless_unscaled, spectral_axis=self.CONTWAVE*u.AA)#, uncertainty=1.0/self.CONTSIGMA)
+        spec = Spectrum1D(flux=self.CONTFLUX*u.dimensionless_unscaled, spectral_axis=self.CONTWAVE*u.AA, uncertainty=VarianceUncertainty(self.CONTSIGMA*u.dimensionless_unscaled))
         self.centroid.delete(0, tkinter.END)
         self.centroid.insert(0, centroid(spec, SpectralRegion(LWIN*u.AA, HWIN*u.AA))/u.AA)
         self.eqwidth.delete(0, tkinter.END)
