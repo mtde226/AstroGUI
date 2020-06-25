@@ -63,16 +63,6 @@ class newGUI:
         self.aperture = tkinter.OptionMenu(master,self.apVal,*self.apertures)
         self.aperture.grid(row = 3, column = 4)
 
-        self.lowRangeLabel = tkinter.Label(master, text="Low plot:")
-        self.lowRangeLabel.grid(row = 2, column = 0)
-        self.lowRange = tkinter.Entry(master,width=10)
-        self.lowRange.grid(row = 2, column = 1)
-
-        self.highRangeLabel = tkinter.Label(master, text="High plot:")
-        self.highRangeLabel.grid(row = 2, column = 2)
-        self.highRange = tkinter.Entry(master,width=10)
-        self.highRange.grid(row = 2, column = 3)
-
         self.lowwindowLabel = tkinter.Label(master, text="Low Window:")
         self.lowwindowLabel.grid(row = 3, column = 0)
         self.lowwindow = tkinter.Entry(master, width=10)
@@ -130,9 +120,36 @@ class newGUI:
         self.eqwidth = tkinter.Entry(master,width=10)
         self.eqwidth.grid(row = 10, column = 1)
 
+        self.inteqwLabel = tkinter.Label(master, text="Integral Width")
+        self.inteqwLabel.grid(row = 9, column = 3)
+        self.inteqw = tkinter.Entry(master,width=10)
+        self.inteqw.grid(row = 10, column = 3)
+        self.inteqwErr = tkinter.Entry(master,width=10)
+        self.inteqwErr.grid(row = 10, column = 4)
+
         self.figLine, self.figLAx = plt.subplots(figsize=(8,6))
         self.canLine = FigureCanvasTkAgg(self.figLine, master)
         self.canLine.get_tk_widget().grid(row = 11, column = 0, columnspan=5)
+
+        self.lowRangeLabel = tkinter.Label(master, text="Plot Left:")
+        self.lowRangeLabel.grid(row = 12, column = 0)
+        self.lowRange = tkinter.Entry(master,width=10)
+        self.lowRange.grid(row = 12, column = 1)
+
+        self.highRangeLabel = tkinter.Label(master, text="Plot Right:")
+        self.highRangeLabel.grid(row = 12, column = 2)
+        self.highRange = tkinter.Entry(master,width=10)
+        self.highRange.grid(row = 12, column = 3)
+
+        self.plotMinLabel = tkinter.Label(master, text="Plot Min:")
+        self.plotMinLabel.grid(row = 13, column = 0)
+        self.plotMin = tkinter.Entry(master,width=10)
+        self.plotMin.grid(row = 13, column = 1)
+
+        self.plotMaxLabel = tkinter.Label(master, text="Plot Max:")
+        self.plotMaxLabel.grid(row = 13, column = 2)
+        self.plotMax = tkinter.Entry(master,width=10)
+        self.plotMax.grid(row = 13, column = 3)
 
     ## Open an input file
     def retrieveInput(self):
@@ -143,7 +160,7 @@ class newGUI:
         self.FILENAME = endParse[len(endParse)-1].split(".")[0]
         # get info from header
         self.NAME = specin[0].header['OBJECT']
-        self.sNAMELabel['text'] = "Name: %s"%(self.NAME)
+        self.sNAMELabel['text'] = "Name: %s\n%s"%(self.NAME,self.FILENAME)
         self.HJD = specin[0].header['HJD']
         # get the wavelength solution
         soln = ''
@@ -239,7 +256,7 @@ class newGUI:
         self.continuum.insert(0, bestfit_line.amplitude_0.value)
         self.contErr.delete(0, tkinter.END)
         self.contErr.insert(0, np.sqrt(cov_diag[0]))
-        # calculate the equivalent width from the fit
+        # calculate the equivalent width from the continuum fit
         sumeqw = 0.0
         conti = bestfit_line.amplitude_0.value
         for i in range(len(self.CONTWAVE)):
@@ -247,6 +264,14 @@ class newGUI:
                 sumeqw += (conti-self.CONTFLUX[i])/conti*(self.CONTWAVE[i]-self.CONTWAVE[i-1])
         self.calceqw.delete(0, tkinter.END)
         self.calceqw.insert(0, sumeqw)
+        # calculate equivalent width from Gaussian integral
+        integral = -1.0 * float(self.fitDepth.get()) * float(self.fitWidth.get()) * np.sqrt(2.0*np.pi)
+        self.inteqw.delete(0, tkinter.END)
+        self.inteqw.insert(0, integral)
+        errorew = integral * np.sqrt( np.power(float(self.depthErr.get())/float(self.fitDepth.get()),2.0) +
+                                          np.power(float(self.widthErr.get())/float(self.fitWidth.get()),2.0) )
+        self.inteqwErr.delete(0, tkinter.END)
+        self.inteqwErr.insert(0, errorew)
         self.updatePlot()
 
     # update the plot in the GUI
@@ -282,6 +307,13 @@ class newGUI:
         except:
             LWIN = LOW
             HWIN = HIGH
+        try:
+            TOP = float(self.plotMax.get())
+            BOTTOM = float(self.plotMin.get())
+        except:
+            TOP = 1.2
+            BOTTOM = 0.0
+
         model_line = models.Const1D(CONTI) + models.Gaussian1D(amplitude=DEPTH, mean=MEAN, stddev=STDDEV)
         # fit continuum and plot data
         self.contiFit()
@@ -295,16 +327,17 @@ class newGUI:
         self.figLAx.plot(self.CONTWAVE,model_line(self.CONTWAVE),linewidth=2)
         self.figLAx.grid()
         self.figLAx.set_xlim(LOW,HIGH)
-        self.figLAx.set_ylim(0.0,1.2)
+        self.figLAx.set_ylim(BOTTOM,TOP)
         self.canLine = FigureCanvasTkAgg(self.figLine, self.master)
         self.canLine.get_tk_widget().grid(row = 11, column = 0, columnspan=5)
 
     # put output in a file
     def saveLine(self):
-        self.FOUT.write("%s %s %f %d %.4f %.6f %.6f %.4f %.6f %.6f %.6f %.6f %.6f\n"%
+        self.FOUT.write("%s %s %f %d %.4f %.6f %.6f %.6f %.6f %.4f %.6f %.6f %.6f %.6f %.6f\n"%
                             (self.FILENAME, self.NAME, self.HJD, np.int8(self.apVal.get()),
                             np.float32(self.centroid.get()), np.float32(self.eqwidth.get()),
                             np.float32(self.calceqw.get()),
+                            np.float32(self.inteqw.get()), np.float32(self.inteqwErr.get()),
                             np.float32(self.fitMean.get()), np.float32(self.meanErr.get()),
                             np.float32(self.fitWidth.get()), np.float32(self.widthErr.get()),
                             np.float32(self.fitDepth.get()), np.float32(self.depthErr.get())))
