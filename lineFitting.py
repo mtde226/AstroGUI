@@ -24,6 +24,7 @@ class newGUI:
         self.NAME = str(' ')
         self.HJD = []
         self.VHELIO = []
+        self.residual = 0.
         self.nsteps = 0
         self.apStart = np.zeros(17)
         self.apStep = np.zeros(17)
@@ -276,8 +277,8 @@ class newGUI:
         self.inteqwErr.delete(0, tkinter.END)
         self.inteqwErr.insert(0, "%.6f"%(errorew))
         # calculate the residual of the fit
-        residual = np.sum( self.CONTSIGMA*(self.CONTFLUX - bestfit_line(self.CONTWAVE))**2 )
-        self.residualLabel['text'] = "Residual:\n%.6f"%(residual)
+        self.residual = np.sum( self.CONTSIGMA*(self.CONTFLUX - bestfit_line(self.CONTWAVE))**2 )
+        self.residualLabel['text'] = "Residual:\n%.6f"%(self.residual)
         self.updatePlot()
 
     # update the plot in the GUI
@@ -339,14 +340,15 @@ class newGUI:
 
     # put output in a file
     def saveLine(self):
-        self.FOUT.write("%s %s %f %d %.4f %.6f %.6f %.6f %.6f %.4f %.6f %.6f %.6f %.6f %.6f\n"%
+        self.FOUT.write("%s %s %f %d %.4f %.6f %.6f %.6f %.6f %.4f %.6f %.6f %.6f %.6f %.6f %.6f\n"%
                             (self.FILENAME, self.NAME, self.HJD, np.int8(self.apVal.get()),
                             np.float32(self.centroid.get()), np.float32(self.eqwidth.get()),
                             np.float32(self.calceqw.get()),
                             np.float32(self.inteqw.get()), np.float32(self.inteqwErr.get()),
                             np.float32(self.fitMean.get()), np.float32(self.meanErr.get()),
                             np.float32(self.fitWidth.get()), np.float32(self.widthErr.get()),
-                            np.float32(self.fitDepth.get()), np.float32(self.depthErr.get())))
+                            np.float32(self.fitDepth.get()), np.float32(self.depthErr.get()),
+                            self.residual))
         self.FOUT.flush()
         os.fsync(self.FOUT.fileno())
 
