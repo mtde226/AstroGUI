@@ -155,6 +155,10 @@ class newGUI:
         self.residualLabel = tkinter.Label(master, text="Residual:")
         self.residualLabel.grid(row = 12, column = 4)
 
+        self.savePlotButton = tkinter.Button(master, text="Save Plot", fg="green", command=self.savePlot)
+        self.savePlotButton.grid(row = 13, column = 4)
+
+
     ## Open an input file
     def retrieveInput(self):
         # open a dialog to get file
@@ -351,6 +355,14 @@ class newGUI:
                             self.residual))
         self.FOUT.flush()
         os.fsync(self.FOUT.fileno())
+
+    def savePlot(self):
+        fname = tkinter.filedialog.asksaveasfilename()
+        if not fname:
+            return
+        plt.title("%s %s"%(self.FILENAME,self.NAME))
+        self.figLine.savefig(fname)
+        plt.title("")
 
 
 
