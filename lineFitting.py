@@ -151,6 +151,9 @@ class newGUI:
         self.plotMax = tkinter.Entry(master,width=10)
         self.plotMax.grid(row = 13, column = 3)
 
+        self.residualLabel = tkinter.Label(master, text="Residual:")
+        self.residualLabel.grid(row = 12, column = 4)
+
     ## Open an input file
     def retrieveInput(self):
         # open a dialog to get file
@@ -225,9 +228,9 @@ class newGUI:
         # find centroid and equivalent width in window
         spec = Spectrum1D(flux=self.CONTFLUX*u.dimensionless_unscaled, spectral_axis=self.CONTWAVE*u.AA, uncertainty=VarianceUncertainty(self.CONTSIGMA*u.dimensionless_unscaled))
         self.centroid.delete(0, tkinter.END)
-        self.centroid.insert(0, centroid(spec, SpectralRegion(LWIN*u.AA, HWIN*u.AA))/u.AA)
+        self.centroid.insert(0, "%.4f"%(centroid(spec, SpectralRegion(LWIN*u.AA, HWIN*u.AA))/u.AA))
         self.eqwidth.delete(0, tkinter.END)
-        self.eqwidth.insert(0, equivalent_width(spec, regions=SpectralRegion(LWIN*u.AA, HWIN*u.AA))/u.AA)
+        self.eqwidth.insert(0, "%.6f"%(equivalent_width(spec, regions=SpectralRegion(LWIN*u.AA, HWIN*u.AA))/u.AA))
 
         # fit line with a Gaussian profile
         model_line = models.Const1D(CONTI) + models.Gaussian1D(amplitude=DEPTH, mean=MEAN, stddev=STDDEV)
@@ -241,21 +244,21 @@ class newGUI:
             cov_diag = np.empty(4)*np.nan
         # update values in boxes
         self.fitMean.delete(0, tkinter.END)
-        self.fitMean.insert(0, bestfit_line.mean_1.value)
+        self.fitMean.insert(0, "%.4f"%(bestfit_line.mean_1.value))
         self.meanErr.delete(0, tkinter.END)
-        self.meanErr.insert(0, np.sqrt(cov_diag[2]))
+        self.meanErr.insert(0, "%.4f"%(np.sqrt(cov_diag[2])))
         self.fitDepth.delete(0, tkinter.END)
-        self.fitDepth.insert(0, bestfit_line.amplitude_1.value)
+        self.fitDepth.insert(0, "%.6f"%(bestfit_line.amplitude_1.value))
         self.depthErr.delete(0, tkinter.END)
-        self.depthErr.insert(0, np.sqrt(cov_diag[1]))
+        self.depthErr.insert(0, "%.6f"%(np.sqrt(cov_diag[1])))
         self.fitWidth.delete(0, tkinter.END)
-        self.fitWidth.insert(0, bestfit_line.stddev_1.value)
+        self.fitWidth.insert(0, "%.6f"%(bestfit_line.stddev_1.value))
         self.widthErr.delete(0, tkinter.END)
-        self.widthErr.insert(0, np.sqrt(cov_diag[3]))
+        self.widthErr.insert(0, "%.6f"%(np.sqrt(cov_diag[3])))
         self.continuum.delete(0, tkinter.END)
-        self.continuum.insert(0, bestfit_line.amplitude_0.value)
+        self.continuum.insert(0, "%.6f"%(bestfit_line.amplitude_0.value))
         self.contErr.delete(0, tkinter.END)
-        self.contErr.insert(0, np.sqrt(cov_diag[0]))
+        self.contErr.insert(0, "%.6f"%(np.sqrt(cov_diag[0])))
         # calculate the equivalent width from the continuum fit
         sumeqw = 0.0
         conti = bestfit_line.amplitude_0.value
@@ -263,15 +266,18 @@ class newGUI:
             if( (self.CONTWAVE[i] > LWIN) & (self.CONTWAVE[i] < HWIN) ):
                 sumeqw += (conti-self.CONTFLUX[i])/conti*(self.CONTWAVE[i]-self.CONTWAVE[i-1])
         self.calceqw.delete(0, tkinter.END)
-        self.calceqw.insert(0, sumeqw)
+        self.calceqw.insert(0, "%.6f"%(sumeqw))
         # calculate equivalent width from Gaussian integral
-        integral = -1.0 * float(self.fitDepth.get()) * float(self.fitWidth.get()) * np.sqrt(2.0*np.pi)
+        integral = -1.0 / float(self.continuum.get()) * float(self.fitDepth.get()) * float(self.fitWidth.get()) * np.sqrt(2.0*np.pi)
         self.inteqw.delete(0, tkinter.END)
-        self.inteqw.insert(0, integral)
+        self.inteqw.insert(0, "%.6f"%(integral))
         errorew = integral * np.sqrt( np.power(float(self.depthErr.get())/float(self.fitDepth.get()),2.0) +
                                           np.power(float(self.widthErr.get())/float(self.fitWidth.get()),2.0) )
         self.inteqwErr.delete(0, tkinter.END)
-        self.inteqwErr.insert(0, errorew)
+        self.inteqwErr.insert(0, "%.6f"%(errorew))
+        # calculate the residual of the fit
+        residual = np.sum( self.CONTSIGMA*(self.CONTFLUX - bestfit_line(self.CONTWAVE))**2 )
+        self.residualLabel['text'] = "Residual:\n%.6f"%(residual)
         self.updatePlot()
 
     # update the plot in the GUI
