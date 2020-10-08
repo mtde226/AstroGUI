@@ -7,15 +7,26 @@ import matplotlib.pyplot as plt
 
 _TMSKTH_ = 3
 _BMSKTH_ = 0.001
-_CUTOUT_ = 10
+_CUTOUT_ = 7
 _PERIOD_ = 8.4
+
+def goodTimes(lc,sec):
+    if(sec == 20):
+        return ((lc.time < 1856) | (lc.time > 1858))
+    elif(sec == 17):
+        return ((lc.time < 1772) | (lc.time > 1778))
+    elif(sec == 11):
+        return (((raw_lc.time < 1610) & (raw_lc.time > 1600)) | (raw_lc.time > 1614))
+    else:
+        return (lc.time > 0)
 
 # ADD:
 # quality_bitmask='hard'
 # to download_all for harder cut on QUALITY flag
 #tpf = search_tesscut("LINEAR 20539321").download_all(cutout_size=(_CUTOUT_,_CUTOUT_))
-#tpf = search_tesscut("120.12454194	+40.65662000").download_all(cutout_size=(_CUTOUT_,_CUTOUT_))
-tpf = search_tesscut("RZ Cep").download_all(cutout_size=(_CUTOUT_,_CUTOUT_))
+####tpf = search_tesscut("3.809708 60.340472").download_all(cutout_size=(_CUTOUT_,_CUTOUT_)) ## weird light curve
+tpf = search_tesscut("219.873958 -33.857556").download_all(cutout_size=(_CUTOUT_,_CUTOUT_))
+#tpf = search_tesscut("XX And").download_all(cutout_size=(_CUTOUT_,_CUTOUT_))
 print(tpf)
 if(hasattr(tpf,"__len__")):
     N = len(tpf)
@@ -24,12 +35,13 @@ if(hasattr(tpf,"__len__")):
     n_target_pixels = target_mask1.sum()
     raw_lc = tpf[0].to_lightcurve(aperture_mask=target_mask1)
     #mask = raw_lc.time > 0#((raw_lc.time > 1570.6) & (raw_lc.time < 1583.1)) | (raw_lc.time > 1584.3)
-    #mask = ((raw_lc.time < 1856) | (raw_lc.time > 1858))
     #raw_lc = raw_lc[mask]
+    time_mask = goodTimes(raw_lc,tpf[0].sector)
+    raw_lc = raw_lc[time_mask]
     bkgr_mask1 = ~tpf[0].create_threshold_mask(threshold=_BMSKTH_, reference_pixel=None)
     n_background_pixels = bkgr_mask1.sum()
     bkgr_lc_per_pixel = tpf[0].to_lightcurve(aperture_mask=bkgr_mask1) / n_background_pixels
-    #bkgr_lc_per_pixel = bkgr_lc_per_pixel[mask]
+    bkgr_lc_per_pixel = bkgr_lc_per_pixel[time_mask]
     bkgr_estimate_lc = bkgr_lc_per_pixel * n_target_pixels
     #common_normalization = np.nanpercentile(raw_lc.flux, 10)
     corrected_lc = (raw_lc - bkgr_estimate_lc.flux).flatten()
@@ -56,9 +68,12 @@ if(hasattr(tpf,"__len__")):
         target_mask = itpf.create_threshold_mask(threshold=_TMSKTH_)
         n_target_pixels = target_mask.sum()
         raw_lc = itpf.to_lightcurve(aperture_mask=target_mask)
+        time_mask = goodTimes(raw_lc,itpf.sector)
+        raw_lc = raw_lc[time_mask]
         bkgr_mask = ~itpf.create_threshold_mask(threshold=_BMSKTH_, reference_pixel=None)
         n_background_pixels = bkgr_mask.sum()
         bkgr_lc_per_pixel = itpf.to_lightcurve(aperture_mask=bkgr_mask) / n_background_pixels
+        bkgr_lc_per_pixel = bkgr_lc_per_pixel[time_mask]
         bkgr_estimate_lc = bkgr_lc_per_pixel * n_target_pixels
         #common_normalization = np.nanpercentile(raw_lc.flux, 10)
         temp_lc = (raw_lc - bkgr_estimate_lc.flux).flatten()
